@@ -13,9 +13,16 @@ use TheiNaD\DSMediatheken\Utils\Result;
 class ARD extends Mediathek
 {
     public static $API_BASE_URL = 'https://api.ardmediathek.de/page-gateway/pages/ard/item/';
-    protected static $VALID_QUALITIES = [0, 1, 2, 3, 4];
-    protected static $SUPPORT_MATCHER = ['ardmediathek.de', 'mediathek.daserste.de'];
+    /**
+     * `mcV6` selects the current layout of the media collection (`streams[].media[]`), the previous one
+     * (`_mediaArray[]._mediaStreamArray[]`) is not used by the ARD Mediathek anymore.
+     */
+    public static $API_QUERY = 'embedded=false&mcV6=true';
+    protected static $SUPPORT_MATCHER = 'ardmediathek.de';
     protected static $PLAYER_WIDGET_TYPE = 'player_ondemand';
+    protected static $MAIN_STREAM_KIND = 'main';
+    protected static $DEFAULT_AUDIO_KINDS = ['', 'standard'];
+    protected static $DEFAULT_AUDIO_LANGUAGE = 'deu';
 
     /**
      * @param string $url
@@ -26,8 +33,6 @@ class ARD extends Mediathek
      */
     public function getDownloadInfo($url, $username = '', $password = '')
     {
-        $result = new Result();
-
         $documentId = $this->getDocumentIdFromUrl($url);
         if ($documentId === null) {
             $this->getLogger()->log('no documentId found in ' . $url);
@@ -42,47 +47,36 @@ class ARD extends Mediathek
             return null;
         }
 
-        foreach ($apiData->widgets as $widget) {
-            if ($widget->type !== self::$PLAYER_WIDGET_TYPE) {
-                continue;
-            }
+        $widget = $this->getPlayerWidget($apiData);
+        if ($widget === null) {
+            $this->getLogger()->log('no playable video found, is this the url of a single video?');
 
-            foreach ($widget->mediaCollection->embedded->_mediaArray as $media) {
-                foreach ($media->_mediaStreamArray as $mediaStream) {
-                    if (
-                        $this->mediaStreamHasNeededProperties($mediaStream) &&
-                        $this->mediaStreamHasValidQuality($mediaStream)
-                    ) {
-                        if ($mediaStream->_quality > $result->getQualityRating()) {
-                            $this->getLogger()->log(sprintf('Found stream with quality "%s"', $mediaStream->_quality));
-
-                            $stream = $this->getHighestQualityStream($mediaStream->_stream);
-                            if ($stream !== null) {
-                                $result = new Result();
-                                $result->setQualityRating($mediaStream->_quality);
-                                $result->setUri($stream);
-                            }
-                        }
-                    }
-                }
-            }
-
-            if ($result->hasUri()) {
-                $result = $this->addTitle($widget, $result);
-            }
-        }
-
-        if (!$result->hasUri()) {
             return null;
         }
 
+        if (!empty($widget['blockedByFsk'])) {
+            $this->getLogger()->log('video is only available for age verified users or after 22:00');
+
+            return null;
+        }
+
+        $media = $this->getBestMedia($widget['mediaCollection']['embedded']['streams'] ?? []);
+        if ($media === null) {
+            $this->getLogger()->log('no progressive mp4 stream found');
+
+            return null;
+        }
+
+        $result = new Result();
+        $result->setQualityRating($media['height']);
+        $result->setUri($this->getTools()->addProtocolFromUrlIfMissing($media['url'], $url));
+        $this->addTitle($apiData, $widget, $result);
+
         $this->getLogger()->log(sprintf(
-            'Url "%s" won with quality of "%s"',
+            'Url "%s" won with a height of "%s"',
             $result->getUri(),
             $result->getQualityRating()
         ));
-
-        $result->setUri($this->getTools()->addProtocolFromUrlIfMissing($result->getUri(), $url));
 
         return $result;
     }
@@ -94,98 +88,124 @@ class ARD extends Mediathek
      */
     protected function getDocumentIdFromUrl($url)
     {
-        return $this->getTools()->pregMatchDefault('#/([^/]+)/?$#i', $url, null);
+        return $this->getTools()->pregMatchDefault('#/([^/?\#]+)/?(?:[?\#].*)?$#i', $url, null);
     }
 
     /**
      * @param string $documentId
      *
-     * @return object|null
+     * @return array|null
      */
     protected function getApiData($documentId)
     {
-        return json_decode($this->getTools()->curlRequest(self::$API_BASE_URL . $documentId), false);
-    }
-
-    /**
-     * @param object $mediaStream
-     *
-     * @return bool
-     */
-    protected function mediaStreamHasNeededProperties($mediaStream)
-    {
-        return property_exists($mediaStream, '_stream') && property_exists($mediaStream, '_quality');
-    }
-
-    /**
-     * @param object $mediaStream
-     *
-     * @return bool
-     */
-    protected function mediaStreamHasValidQuality($mediaStream)
-    {
-        return in_array($mediaStream->_quality, self::$VALID_QUALITIES, true);
-    }
-
-    /**
-     * @param mixed $streams
-     *
-     * @return mixed
-     */
-    protected function getHighestQualityStream($streams)
-    {
-        if (!is_array($streams)) {
-            return $streams;
+        $response = $this->getTools()->curlRequest(self::$API_BASE_URL . $documentId . '?' . self::$API_QUERY);
+        if ($response === null) {
+            return null;
         }
 
-        $this->getLogger()->log('Multiple streams found for single quality');
+        $data = json_decode($response, true);
 
-        $hqStream = [
-            'quality' => 0,
-            'url' => null,
-        ];
+        return is_array($data) ? $data : null;
+    }
 
-        foreach ($streams as $stream) {
-            $quality = $this->getQualityFromStreamUrl($stream);
-
-            $this->getLogger()->log(sprintf('Found quality "%s" for url "%s"', $quality, $stream));
-
-            if ($quality > $hqStream['quality']) {
-                $hqStream['quality'] = $quality;
-                $hqStream['url'] = $stream;
+    /**
+     * @param array $apiData
+     *
+     * @return array|null
+     */
+    protected function getPlayerWidget(array $apiData)
+    {
+        foreach ($apiData['widgets'] ?? [] as $widget) {
+            if (($widget['type'] ?? null) === self::$PLAYER_WIDGET_TYPE) {
+                return $widget;
             }
         }
 
-        $this->getLogger()->log(sprintf(
-            'Best url is "%s" with quality of "%s"',
-            $hqStream['url'],
-            $hqStream['quality']
-        ));
-
-        return $hqStream['url'];
+        return null;
     }
 
     /**
-     * @param string $stream
+     * Picks the progressive file, which Download Station is able to download, with the highest resolution.
+     * The stream of the main video is preferred over alternatives like sign language,
+     * the default audio over alternatives like audio description.
      *
-     * @return string|null
+     * @param array $streams
+     *
+     * @return array|null array with keys url and height
      */
-    protected function getQualityFromStreamUrl($stream)
+    protected function getBestMedia(array $streams)
     {
-        return $this->getTools()->pregMatchDefault('#\/(\d+)-[\d_]+\.mp4#i', $stream, 0);
+        $best = null;
+
+        foreach ($streams as $stream) {
+            $isMain = ($stream['kind'] ?? null) === self::$MAIN_STREAM_KIND ? 1 : 0;
+
+            foreach ($stream['media'] ?? [] as $media) {
+                $mediaUrl = $media['url'] ?? null;
+                if (!is_string($mediaUrl) || !$this->isProgressiveMp4($mediaUrl)) {
+                    continue;
+                }
+
+                $height = (int)($media['maxVResolutionPx'] ?? 0);
+                $candidate = [
+                    'url' => $mediaUrl,
+                    'height' => $height,
+                    'score' => [$isMain, $this->hasDefaultAudio($media) ? 1 : 0, $height],
+                ];
+
+                $this->getLogger()->log(sprintf(
+                    'Found %s stream with a height of "%d": %s',
+                    $stream['kind'] ?? 'unknown',
+                    $height,
+                    $mediaUrl
+                ));
+
+                if ($best === null || $candidate['score'] > $best['score']) {
+                    $best = $candidate;
+                }
+            }
+        }
+
+        return $best;
     }
 
     /**
-     * @param object $widget
+     * @param string $mediaUrl
+     *
+     * @return bool
+     */
+    protected function isProgressiveMp4($mediaUrl)
+    {
+        $path = parse_url($mediaUrl, PHP_URL_PATH);
+
+        return is_string($path) && strtolower(pathinfo($path, PATHINFO_EXTENSION)) === 'mp4';
+    }
+
+    /**
+     * @param array $media
+     *
+     * @return bool
+     */
+    protected function hasDefaultAudio(array $media)
+    {
+        $audio = $media['audios'][0] ?? [];
+
+        return in_array($audio['kind'] ?? '', self::$DEFAULT_AUDIO_KINDS, true) &&
+            ($audio['languageCode'] ?? self::$DEFAULT_AUDIO_LANGUAGE) === self::$DEFAULT_AUDIO_LANGUAGE;
+    }
+
+    /**
+     * @param array  $apiData
+     * @param array  $widget
      * @param Result $result
      *
-     * @return Result
+     * @return void
      */
-    protected function addTitle($widget, Result $result)
+    protected function addTitle(array $apiData, array $widget, Result $result)
     {
-        $result->setTitle($widget->show->title);
-        $result->setEpisodeTitle($widget->title);
+        $meta = $widget['mediaCollection']['embedded']['meta'] ?? [];
 
-        return $result;
+        $result->setTitle(trim($meta['seriesTitle'] ?? $widget['show']['title'] ?? ''));
+        $result->setEpisodeTitle(trim($meta['title'] ?? $widget['title'] ?? $apiData['title'] ?? ''));
     }
 }

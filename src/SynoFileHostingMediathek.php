@@ -27,6 +27,7 @@ include_once __DIR__ . '/Mediatheken/Arte.php';
 include_once __DIR__ . '/Mediatheken/BR.php';
 include_once __DIR__ . '/Mediatheken/KiKa.php';
 include_once __DIR__ . '/Mediatheken/ZDF.php';
+include_once __DIR__ . '/Mediatheken/ZDFLegacy.php';
 include_once __DIR__ . '/Mediatheken/DreiSat.php';
 // phpcs:enable
 
@@ -36,7 +37,7 @@ include_once __DIR__ . '/Mediatheken/DreiSat.php';
  * All public functions are required by Synology Download Station.
  *
  * @author    Daniel Gehn <me@theinad.com>
- * @version   0.7.0
+ * @version   0.8.0
  * @copyright 2017-2022 Daniel Gehn
  * @license   http://opensource.org/licenses/MIT Licensed under MIT License
  */

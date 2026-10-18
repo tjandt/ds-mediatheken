@@ -1,0 +1,135 @@
+{
+  "fskRating": "NONE",
+  "id": "1m0kFcyvowSiEYW4c6YYWg",
+  "title": "Geliefert",
+  "widgets": [
+    {
+      "type": "gridlist",
+      "title": "Mehr",
+      "teasers": []
+    },
+    {
+      "type": "player_ondemand",
+      "id": "Y3JpZDovL2Rhc2Vyc3RlLmRlL2ZpbG1taXR0d29jaCBpbSBlcnN0ZW4vMjE4MzkzZTMtYjIyMy00Njg2LWJmNTMtM2M2NTg5MzIxYzMw",
+      "title": "Geliefert",
+      "show": {
+        "title": "FilmMittwoch im Ersten"
+      },
+      "blockedByFsk": true,
+      "geoblocked": false,
+      "mediaCollection": {
+        "embedded": {
+          "meta": {
+            "title": "Geliefert",
+            "seriesTitle": "FilmMittwoch im Ersten",
+            "durationSeconds": 5400
+          },
+          "streams": [
+            {
+              "kind": "ad",
+              "isAdaptiveQualitySelectable": false,
+              "media": [
+                {
+                  "url": "https://pdvideosdaserste-a.akamaihd.net/int/2021/10/04/218393e3-b223-4686-bf53-3c6589321c30/1920-9_978599.mp4",
+                  "mimeType": "video/mp4",
+                  "maxHResolutionPx": 1920,
+                  "maxVResolutionPx": 1080,
+                  "videoCodec": "h264",
+                  "forcedLabel": "",
+                  "audios": [
+                    {
+                      "kind": "audiodeskription",
+                      "languageCode": "deu"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "kind": "main",
+              "isAdaptiveQualitySelectable": false,
+              "media": [
+                {
+                  "url": "https://dasersteuni-vh.akamaihd.net/i/int/2021/10/04/218393e3-b223-4686-bf53-3c6589321c30/master.m3u8",
+                  "mimeType": "application/vnd.apple.mpegurl",
+                  "maxHResolutionPx": 1920,
+                  "maxVResolutionPx": 1080,
+                  "videoCodec": "h264",
+                  "forcedLabel": "",
+                  "audios": [
+                    {
+                      "kind": "standard",
+                      "languageCode": "deu"
+                    }
+                  ]
+                },
+                {
+                  "url": "https://pdvideosdaserste-a.akamaihd.net/int/2021/10/04/218393e3-b223-4686-bf53-3c6589321c30/960-1_978535.mp4",
+                  "mimeType": "video/mp4",
+                  "maxHResolutionPx": 960,
+                  "maxVResolutionPx": 540,
+                  "videoCodec": "h264",
+                  "forcedLabel": "",
+                  "audios": [
+                    {
+                      "kind": "standard",
+                      "languageCode": "deu"
+                    }
+                  ]
+                },
+                {
+                  "url": "https://pdvideosdaserste-a.akamaihd.net/int/2021/10/04/218393e3-b223-4686-bf53-3c6589321c30/1920-1_978535.mp4",
+                  "mimeType": "video/mp4",
+                  "maxHResolutionPx": 1920,
+                  "maxVResolutionPx": 1080,
+                  "videoCodec": "h264",
+                  "forcedLabel": "",
+                  "audios": [
+                    {
+                      "kind": "standard",
+                      "languageCode": "deu"
+                    }
+                  ]
+                },
+                {
+                  "url": "https://pdvideosdaserste-a.akamaihd.net/int/2021/10/04/218393e3-b223-4686-bf53-3c6589321c30/640-1_978535.mp4",
+                  "mimeType": "video/mp4",
+                  "maxHResolutionPx": 640,
+                  "maxVResolutionPx": 360,
+                  "videoCodec": "h264",
+                  "forcedLabel": "",
+                  "audios": [
+                    {
+                      "kind": "standard",
+                      "languageCode": "deu"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "kind": "sign-language",
+              "isAdaptiveQualitySelectable": false,
+              "media": [
+                {
+                  "url": "https://pdvideosdaserste-a.akamaihd.net/int/2021/10/04/218393e3-b223-4686-bf53-3c6589321c30/1920-2_978536.mp4",
+                  "mimeType": "video/mp4",
+                  "maxHResolutionPx": 1920,
+                  "maxVResolutionPx": 1080,
+                  "videoCodec": "h264",
+                  "forcedLabel": "",
+                  "audios": [
+                    {
+                      "kind": "standard",
+                      "languageCode": "deu"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

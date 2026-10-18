@@ -1,0 +1,21 @@
+{
+  "data": {
+    "videoByCanonical": {
+      "canonical": "besenrennen-102",
+      "title": "Das große Besenrennen",
+      "smartCollection": {
+        "canonical": "x",
+        "title": "Bibi Blocksberg"
+      },
+      "currentMedia": {
+        "nodes": [
+          {
+            "ptmdTemplate": "/tmd/2/{playerId}/vod/ptmd/tivi/180217_besenrennen_folge51_bib",
+            "vodMediaType": "default",
+            "id": "1"
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "data": {
+    "videoByCanonical": {
+      "canonical": "movie-100",
+      "title": "Ein Film",
+      "smartCollection": {
+        "canonical": "x",
+        "title": "Ein Film"
+      },
+      "currentMedia": {
+        "nodes": [
+          {
+            "ptmdTemplate": "/tmd/2/{playerId}/vod/ptmd/mediathek/dgs_variant",
+            "vodMediaType": "DGS",
+            "id": "2"
+          },
+          {
+            "ptmdTemplate": "/tmd/2/{playerId}/vod/ptmd/mediathek/regular_variant",
+            "vodMediaType": "default",
+            "id": "1"
+          }
+        ]
+      }
+    }
+  }
+}

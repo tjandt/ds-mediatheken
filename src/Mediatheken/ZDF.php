@@ -6,65 +6,85 @@ use TheiNaD\DSMediatheken\Utils\Mediathek;
 use TheiNaD\DSMediatheken\Utils\Result;
 
 /**
+ * Uses the same APIs as the apps of the ZDF Mediathek:
+ *
+ * 1. an API token is requested
+ * 2. the GraphQL API tells the metadata and the url template of the playlist (PTMD) of the video
+ * 3. the PTMD lists all the files of the video
+ *
  * @author    Daniel Gehn <me@theinad.com>
  * @copyright 2017-2022 Daniel Gehn
  * @license   http://opensource.org/licenses/MIT Licensed under MIT License
  */
 class ZDF extends Mediathek
 {
+    public const TOKEN_URL = 'https://zdf-prod-futura.zdf.de/mediathekV2/token';
+    public const GRAPHQL_URL = 'https://api.zdf.de/graphql';
+    public const API_BASE_URL = 'https://api.zdf.de';
+    protected const PLAYER_ID = 'android_native_6';
+    protected const PLACEHOLDER_PLAYER_ID = '{playerId}';
+    protected const API_AUTH_HEADER = 'Api-Auth';
+    protected const VOD_MEDIA_TYPE_SIGN_LANGUAGE = 'DGS';
+    protected const GRAPHQL_QUERY = <<<'GRAPHQL'
+query VideoByCanonical($canonical: String!) {
+  videoByCanonical(canonical: $canonical) {
+    canonical
+    title
+    smartCollection {
+      canonical
+      title
+    }
+    currentMedia {
+      nodes {
+        ptmdTemplate
+        ... on VodMedia {
+          vodMediaType
+        }
+        ... on LiveMedia {
+          liveMediaType
+        }
+        id
+      }
+    }
+  }
+}
+GRAPHQL;
+
     /**
-     * Maps Qualities to ratings.
-     *
-     * A higher rating means the quality is preferred.
-     * A rating of -1 means the quality will be ignored.
+     * Facets containing one of these have restrictions and are only used if there is nothing else.
      *
      * @var array
      */
-    protected static $QUALITY_RATING = [
-        'low' => 0,
-        'med' => 1,
-        'high' => 2,
-        'veryhigh' => 3,
-    ];
-    /**
-     * Maps Mimetypes to ratings.
-     *
-     * A higher rating means the mimetype is preferred.
-     * A rating of -1 means the mimetype will be ignored.
-     *
-     * @var array
-     */
-    protected static $MIMETYPE_RATING = [
-        'application/x-mpegURL' => -1,
-        'application/f4m+xml' => -1,
-        'video/webm' => 1,
-        'video/mp4' => 2,
-    ];
-    /**
-     * Facets containing this type will be completely ignored.
-     *
-     * @var array
-     */
-    protected static $UNSUPPORTED_FACETS = [
+    protected static $RESTRICTED_FACETS = [
         'hbbtv',
         'restriction_useragent',
     ];
-    protected static $SUPPORTED_LANGUAGES = [
-        'deu',
+    /**
+     * Maps mimetype extensions to ratings, a higher rating is preferred.
+     * Only progressive files can be downloaded by Download Station, so other formats (HLS, DASH) are not listed.
+     *
+     * @var array
+     */
+    protected static $EXTENSION_RATING = [
+        'webm' => 1,
+        'mp4' => 2,
     ];
-    protected static $API_BASE_URL = 'https://api.zdf.de';
-    protected static $JSON_ELEMENT_DOWNLOAD_INFORMATION_URL = 'http://zdf.de/rels/streams/ptmd-template';
-    protected static $JSON_OBJ_ELEMENT_TARGET = 'http://zdf.de/rels/target';
-    protected static $JSON_OBJ_ELEMENT_MAIN_VIDEO_CONTENT = 'mainVideoContent';
-    protected static $API_AUTH_HEADER = 'Api-Auth';
-    protected static $API_AUTH_PATTERN = 'Bearer {token}';
-    protected static $PLACEHOLDER_PLAYER_ID = '{playerId}';
-    protected static $PLAYER_ID = 'ngplayer_2_3';
-    protected static $JSON_OBJ_ELEMENT_PRIORITY_LIST = 'priorityList';
-    protected static $JSON_OBJ_ELEMENT_FORMITAETEN = 'formitaeten';
-    protected static $JSON_OBJ_ELEMENT_TITLE = 'title';
-    protected static $JSON_OBJ_ELEMENT_BRAND = 'http://zdf.de/rels/brand';
-    protected static $JSON_OBJ_ELEMENT_BRAND_TITLE = 'title';
+    /**
+     * Fallback for qualities without a `highestVerticalResolution`, maps qualities to an approximate height.
+     *
+     * @var array
+     */
+    protected static $QUALITY_HEIGHT = [
+        'low' => 288,
+        'med' => 360,
+        'high' => 540,
+        'veryhigh' => 720,
+        'hd' => 1080,
+        'fhd' => 1080,
+        'uhd' => 2160,
+    ];
+    protected static $SUPPORTED_LANGUAGE = 'deu';
+    protected static $MAIN_TRACK_CLASS = 'main';
     protected static $SUPPORT_MATCHER = 'zdf.de';
 
     /**
@@ -76,284 +96,285 @@ class ZDF extends Mediathek
      */
     public function getDownloadInfo($url, $username = '', $password = '')
     {
-        $result = new Result();
-
-        $videoPage = $this->getTools()->curlRequest($url);
-        if ($videoPage === null) {
-            $this->getLogger()->log('Video Page (' . $url . ') using login data (' . $username . '@'
-                . $password . ') could not be loaded.');
+        $canonical = $this->getCanonicalFromUrl($url);
+        if ($canonical === null) {
+            $this->getLogger()->log('no video id found in ' . $url);
 
             return null;
         }
 
-        $apiToken = $this->getApiToken($videoPage);
-        $contentUrl = $this->getContentUrl($videoPage);
-        if ($apiToken === null || $contentUrl === null) {
-            $this->getLogger()->log('API Token (' . $apiToken . ') or content url (' . $contentUrl
-                . ') could not be found.');
+        $this->getLogger()->log('video id is ' . $canonical);
+
+        $apiToken = $this->getApiToken();
+        if ($apiToken === null) {
+            $this->getLogger()->log('could not retrieve an API token');
 
             return null;
         }
 
-        $this->getLogger()->log('API Token is ' . $apiToken);
-
-        $content = $this->apiRequest($contentUrl, $apiToken);
-        if ($content === null) {
-            $this->getLogger()->log('Failed to retrieve content.');
+        $video = $this->getVideo($canonical, $apiToken);
+        if ($video === null) {
+            $this->getLogger()->log('could not retrieve the video "' . $canonical . '"');
 
             return null;
         }
 
-        $contentObject = json_decode($content, false);
-
-        $mainVideoContentTarget = $contentObject
-            ->{static::$JSON_OBJ_ELEMENT_MAIN_VIDEO_CONTENT}
-            ->{static::$JSON_OBJ_ELEMENT_TARGET};
-
-        if (property_exists($mainVideoContentTarget, static::$JSON_ELEMENT_DOWNLOAD_INFORMATION_URL)) {
-            $downloadInformationUrl = $mainVideoContentTarget->{static::$JSON_ELEMENT_DOWNLOAD_INFORMATION_URL};
-        } else {
-            $downloadInformationUrl = $mainVideoContentTarget
-                ->streams
-                ->default
-                ->{static::$JSON_ELEMENT_DOWNLOAD_INFORMATION_URL};
-        }
-
-        $downloadUrl =
-            static::$API_BASE_URL . str_replace(
-                static::$PLACEHOLDER_PLAYER_ID,
-                static::$PLAYER_ID,
-                $downloadInformationUrl
-            );
-
-        $downloadContent = $this->apiRequest($downloadUrl, $apiToken);
-        if ($downloadContent === null) {
-            $this->getLogger()->log('Failed to retrieve download content from "' . $downloadUrl . '".');
+        $result = $this->getBestResult($video, $apiToken);
+        if ($result === null) {
+            $this->getLogger()->log('no suitable file found');
 
             return null;
         }
 
-        $downloadJson = json_decode($downloadContent, false);
-        foreach ($downloadJson->{static::$JSON_OBJ_ELEMENT_PRIORITY_LIST} as $priorityListItem) {
-            $result = $this->processPriorityListItem($priorityListItem, $result);
-        }
-
-        if (!$result->hasUri()) {
-            $this->getLogger()->log('Failed to fetch a suitable file:' . "\n\n" . $downloadContent
-                . "\n\n");
-
-            return null;
-        }
-
-        $result->setTitle($this->getTitle($contentObject));
-        $result->setEpisodeTitle($this->getEpisodeTitle($contentObject));
         $result->setUri($this->getTools()->addProtocolFromUrlIfMissing($result->getUri(), $url));
+        $this->addTitle($video, $result);
 
         return $result;
     }
 
     /**
-     * @param string $videoPage
+     * Both the current urls (/video/.../id and /play/.../id) and the previous ones (/.../id.html) end with the id.
      *
-     * @return string|null
-     */
-    protected function getApiToken($videoPage)
-    {
-        return $this->getTools()->pregMatchDefault('#"apiToken": "(.*?)",#i', $videoPage);
-    }
-
-    /**
-     * @param string $videoPage
-     *
-     * @return string|null
-     */
-    protected function getContentUrl($videoPage)
-    {
-        return $this->getTools()->pregMatchDefault('#"content": "(.*?)",#i', $videoPage);
-    }
-
-    /**
      * @param string $url
+     *
+     * @return string|null
+     */
+    protected function getCanonicalFromUrl($url)
+    {
+        $path = parse_url($url, PHP_URL_PATH);
+        if (!is_string($path)) {
+            return null;
+        }
+
+        $canonical = preg_replace('#\.html$#i', '', basename(rtrim($path, '/')));
+
+        return $canonical === '' || $canonical === '.' ? null : $canonical;
+    }
+
+    /**
+     * @return string|null value for the API auth header, e.g. "Bearer abc"
+     */
+    protected function getApiToken()
+    {
+        $response = $this->getTools()->curlRequest(self::TOKEN_URL);
+        if ($response === null) {
+            return null;
+        }
+
+        $data = json_decode($response, true);
+        if (!isset($data['type'], $data['token']) || !is_string($data['type']) || !is_string($data['token'])) {
+            return null;
+        }
+
+        return $data['type'] . ' ' . $data['token'];
+    }
+
+    /**
+     * @param string $canonical
      * @param string $apiToken
      *
-     * @return string|null
+     * @return array|null
      */
-    protected function apiRequest($url, $apiToken)
+    protected function getVideo($canonical, $apiToken)
     {
-        $this->getLogger()->log(
-            sprintf(
-                'API Request to "%s" with token "%s"',
-                $url,
-                $apiToken
-            )
-        );
-
-        return $this->getTools()->curlRequest($url, [
+        $response = $this->getTools()->curlRequest(self::GRAPHQL_URL, [
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => json_encode([
+                'operationName' => 'VideoByCanonical',
+                'query' => self::GRAPHQL_QUERY,
+                'variables' => ['canonical' => $canonical],
+            ]),
             CURLOPT_HTTPHEADER => [
-                static::$API_AUTH_HEADER . ': ' . str_replace('{token}', $apiToken, static::$API_AUTH_PATTERN),
+                self::API_AUTH_HEADER . ': ' . $apiToken,
+                'Apollo-Require-Preflight: true',
+                'Content-Type: application/json',
             ],
         ]);
+        if ($response === null) {
+            return null;
+        }
+
+        $data = json_decode($response, true);
+
+        return $data['data']['videoByCanonical'] ?? null;
     }
 
     /**
-     * @param object $priorityListItem
-     * @param Result $result
+     * A video can consist of multiple nodes, e.g. the regular one and one with a sign language interpreter.
+     * The regular ones are preferred, the next node is only requested if the previous one had no suitable file.
      *
-     * @return Result
+     * @param array  $video
+     * @param string $apiToken
+     *
+     * @return Result|null
      */
-    protected function processPriorityListItem($priorityListItem, Result $result)
+    protected function getBestResult(array $video, $apiToken)
     {
-        foreach ($priorityListItem->{static::$JSON_OBJ_ELEMENT_FORMITAETEN} as $formitaet) {
-            $this->getLogger()->log(sprintf('Formität: %s', implode(', ', $formitaet->facets)));
+        $nodes = $video['currentMedia']['nodes'] ?? [];
 
-            if ($this->isFacetSupported($formitaet) === false) {
-                $this->getLogger()->log(sprintf('Unsupported facets %s', implode(', ', $formitaet->facets)));
+        usort($nodes, function ($a, $b) {
+            return $this->isSignLanguage($a) <=> $this->isSignLanguage($b);
+        });
+
+        foreach ($nodes as $node) {
+            if (empty($node['ptmdTemplate'])) {
                 continue;
             }
 
-            $mimeTypeRating = $this->getMimeTypeRating($formitaet);
-            if ($mimeTypeRating <= $result->getMimeTypeRating()) {
-                $this->getLogger()->log(
-                    sprintf(
-                        'Mimetype Rating "%d" is lower or equal to previous "%d"',
-                        $mimeTypeRating,
-                        $result->getMimeTypeRating()
-                    )
-                );
+            if (isset($node['liveMediaType'])) {
+                $this->getLogger()->log('livestreams can not be downloaded');
                 continue;
             }
 
-            foreach ($formitaet->qualities as $quality) {
-                $result = $this->processQuality($quality, $mimeTypeRating, $result);
+            $result = $this->getBestResultFromPtmd($this->getPtmdUrl($node['ptmdTemplate']), $apiToken);
+            if ($result !== null) {
+                return $result;
             }
         }
+
+        return null;
+    }
+
+    /**
+     * @param array $node
+     *
+     * @return int
+     */
+    protected function isSignLanguage(array $node)
+    {
+        return ($node['vodMediaType'] ?? null) === self::VOD_MEDIA_TYPE_SIGN_LANGUAGE ? 1 : 0;
+    }
+
+    /**
+     * @param string $ptmdTemplate
+     *
+     * @return string
+     */
+    protected function getPtmdUrl($ptmdTemplate)
+    {
+        $path = str_replace(self::PLACEHOLDER_PLAYER_ID, self::PLAYER_ID, $ptmdTemplate);
+
+        return preg_match('#^https?://#i', $path) === 1 ? $path : self::API_BASE_URL . $path;
+    }
+
+    /**
+     * @param string $ptmdUrl
+     * @param string $apiToken
+     *
+     * @return Result|null
+     */
+    protected function getBestResultFromPtmd($ptmdUrl, $apiToken)
+    {
+        $this->getLogger()->log('requesting ' . $ptmdUrl);
+
+        $response = $this->getTools()->curlRequest($ptmdUrl, [
+            CURLOPT_HTTPHEADER => [
+                self::API_AUTH_HEADER . ': ' . $apiToken,
+            ],
+        ]);
+        if ($response === null) {
+            return null;
+        }
+
+        $ptmd = json_decode($response, true);
+
+        $best = null;
+        foreach ($ptmd['priorityList'] ?? [] as $priorityListItem) {
+            foreach ($priorityListItem['formitaeten'] ?? [] as $formitaet) {
+                $restricted = $this->hasRestrictedFacet($formitaet['facets'] ?? []);
+
+                foreach ($formitaet['qualities'] ?? [] as $quality) {
+                    foreach ($quality['audio']['tracks'] ?? [] as $track) {
+                        $candidate = $this->createCandidate($track, $quality, $restricted);
+                        if ($candidate !== null && ($best === null || $candidate['score'] > $best['score'])) {
+                            $best = $candidate;
+                        }
+                    }
+                }
+            }
+        }
+
+        if ($best === null) {
+            $this->getLogger()->log('no progressive file found in ' . $ptmdUrl);
+
+            return null;
+        }
+
+        $this->getLogger()->log(sprintf('Url "%s" won with a height of "%d"', $best['uri'], $best['height']));
+
+        $result = new Result();
+        $result->setUri($best['uri']);
+        $result->setQualityRating($best['height']);
 
         return $result;
     }
 
     /**
-     * @param object $formitaet
+     * @param array $track
+     * @param array $quality
+     * @param bool  $restricted
+     *
+     * @return array|null
+     */
+    protected function createCandidate(array $track, array $quality, $restricted)
+    {
+        $uri = $track['uri'] ?? null;
+        if (!is_string($uri)) {
+            return null;
+        }
+
+        $extension = strtolower(pathinfo((string)parse_url($uri, PHP_URL_PATH), PATHINFO_EXTENSION));
+        if (!isset(self::$EXTENSION_RATING[$extension])) {
+            return null;
+        }
+
+        $height = (int)($quality['highestVerticalResolution'] ?? 0);
+        if ($height === 0) {
+            $height = self::$QUALITY_HEIGHT[$quality['quality'] ?? ''] ?? 0;
+        }
+
+        $isMainTrack = ($track['class'] ?? null) === self::$MAIN_TRACK_CLASS;
+        $isSupportedLanguage = ($track['language'] ?? null) === self::$SUPPORTED_LANGUAGE;
+
+        return [
+            'uri' => $uri,
+            'height' => $height,
+            'score' => [
+                ($isMainTrack ? 2 : 0) + ($isSupportedLanguage ? 1 : 0),
+                $restricted ? 0 : 1,
+                self::$EXTENSION_RATING[$extension],
+                $height,
+            ],
+        ];
+    }
+
+    /**
+     * @param array $facets
      *
      * @return bool
      */
-    protected function isFacetSupported($formitaet)
+    protected function hasRestrictedFacet(array $facets)
     {
-        foreach ($formitaet->facets as $facet) {
-            if (in_array($facet, static::$UNSUPPORTED_FACETS, true)) {
-                return false;
-            }
-        }
-
-        return true;
+        return count(array_intersect($facets, self::$RESTRICTED_FACETS)) > 0;
     }
 
     /**
-     * @param object $formitaet
-     *
-     * @return int
-     */
-    protected function getMimeTypeRating($formitaet)
-    {
-        if (array_key_exists($formitaet->mimeType, static::$MIMETYPE_RATING) === false) {
-            $this->getLogger()->log('Unknown Mime Type ' . $formitaet->mimeType);
-
-            return -1;
-        }
-
-        return static::$MIMETYPE_RATING[$formitaet->mimeType];
-    }
-
-    /**
-     * @param object $quality
-     * @param int    $mimeTypeRating
+     * @param array  $video
      * @param Result $result
      *
-     * @return Result
+     * @return void
      */
-    protected function processQuality($quality, $mimeTypeRating, Result $result)
+    protected function addTitle(array $video, Result $result)
     {
-        $qualityRating = $this->getQualityRating($quality);
-        if ($qualityRating <= $result->getQualityRating()) {
-            $this->getLogger()->log(
-                sprintf(
-                    'Quality Rating "%d" is lower than previous of "%d"',
-                    $qualityRating,
-                    $result->getQualityRating()
-                )
-            );
+        $title = trim($video['smartCollection']['title'] ?? '');
+        $episodeTitle = trim($video['title'] ?? '');
 
-            return $result;
+        // single videos like movies are their own collection
+        if ($title === $episodeTitle) {
+            $title = '';
         }
 
-        foreach ($quality->audio->tracks as $track) {
-            if ($this->isLanguageSupported($track) === false) {
-                $this->getLogger()->log('Unknown language ' . $track->language);
-                continue;
-            }
-
-            if ($track->class !== 'main') {
-                $this->getLogger()->log('Is not class "main" ' . $track->class);
-                continue;
-            }
-
-            $result = new Result();
-            $result->setUri($track->uri);
-            $result->setMimeTypeRating($mimeTypeRating);
-            $result->setQualityRating($qualityRating);
-        }
-
-        return $result;
-    }
-
-    /**
-     * @param $quality
-     *
-     * @return int
-     */
-    protected function getQualityRating($quality)
-    {
-        if (array_key_exists($quality->quality, static::$QUALITY_RATING) === false) {
-            $this->getLogger()->log('Unknown quality ' . $quality->quality);
-
-            return -1;
-        }
-
-        return static::$QUALITY_RATING[$quality->quality];
-    }
-
-    /**
-     * @param object $track
-     *
-     * @return bool
-     */
-    protected function isLanguageSupported($track)
-    {
-        return in_array($track->language, static::$SUPPORTED_LANGUAGES, true);
-    }
-
-    /**
-     * @param object $contentObject
-     *
-     * @return string
-     */
-    protected function getTitle($contentObject)
-    {
-        $title = @$contentObject
-            ->{static::$JSON_OBJ_ELEMENT_BRAND}
-            ->{static::$JSON_OBJ_ELEMENT_BRAND_TITLE};
-
-        return trim($title);
-    }
-
-    /**
-     * @param object $contentObject
-     *
-     * @return string
-     */
-    protected function getEpisodeTitle($contentObject)
-    {
-        $episodeTitle = @$contentObject->{static::$JSON_OBJ_ELEMENT_TITLE};
-
-        return trim($episodeTitle);
+        $result->setTitle($title);
+        $result->setEpisodeTitle($episodeTitle);
     }
 }

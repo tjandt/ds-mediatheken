@@ -1,0 +1,38 @@
+{
+  "data": {
+    "attributes": {
+      "metadata": {
+        "providerId": "088376-000-A",
+        "title": "Lou Andreas-Salomé",
+        "subtitle": null,
+        "duration": {
+          "seconds": 5000
+        }
+      },
+      "rights": {
+        "begin": "2021-01-01T00:00:00Z"
+      },
+      "restriction": {
+        "geoblocking": {
+          "restrictedArea": false,
+          "code": "DE_FR"
+        }
+      },
+      "streams": [
+        {
+          "protocol": "HLS",
+          "url": "https://manifest-arte.akamaized.net/hls/088376-000-A_VOF-STMF/master.m3u8",
+          "versions": [
+            {
+              "eStat": {
+                "ml5": "VOF-STMF"
+              },
+              "label": "Français sous-titres pour sourds et malentendants",
+              "shortLabel": "ST mal"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

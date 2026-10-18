@@ -94,6 +94,9 @@ Dieser Link wird bei der `Download Station` nun einfach hinzugefügt und nach ku
 
 - **Wichtig** Es wird zur Zeit die höchstmögliche MP4 Qualität heruntergeladen die verfügbar ist.
 - Es könnte passieren, dass ein Download nicht funktioniert und keine Videodatei heruntergeladen wird. Sollte dies der Fall sein, so [erstelle ein Ticket](https://github.com/iNaD/ds-mediatheken/issues/new) mit dem Link zur Folge und ein paar Informationen über deine Diskstation.
+- Die Download Station kann nur einzelne Dateien herunterladen, keine HLS-/DASH-Streams. Bietet Arte ein Video nur als HLS-Stream an, kann es nicht heruntergeladen werden. In diesem Fall bleibt der Download ohne Ergebnis und der Grund steht im Log.
+- Es werden die Links zu einzelnen Videos unterstützt, keine Sendungs-, Serien- oder Sammlungsseiten.
+- 3sat wurde noch nicht an die neue API des ZDF angepasst.
 
 ### Spenden
 

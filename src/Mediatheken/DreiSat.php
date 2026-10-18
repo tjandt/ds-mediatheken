@@ -7,7 +7,7 @@ namespace TheiNaD\DSMediatheken\Mediatheken;
  * @copyright 2017-2022 Daniel Gehn
  * @license   http://opensource.org/licenses/MIT Licensed under MIT License
  */
-class DreiSat extends ZDF
+class DreiSat extends ZDFLegacy
 {
     protected static $API_BASE_URL = 'https://api.3sat.de';
     protected static $SUPPORT_MATCHER = '3sat.de';

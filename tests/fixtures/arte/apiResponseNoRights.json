@@ -1,0 +1,114 @@
+{
+  "data": {
+    "attributes": {
+      "metadata": {
+        "providerId": "088376-000-A",
+        "title": "Lou Andreas-Salomé",
+        "subtitle": null,
+        "duration": {
+          "seconds": 5000
+        }
+      },
+      "rights": null,
+      "restriction": {
+        "geoblocking": {
+          "restrictedArea": false,
+          "code": "DE_FR"
+        }
+      },
+      "streams": [
+        {
+          "protocol": "HLS",
+          "url": "https://manifest-arte.akamaized.net/hls/088376-000-A_VOF-STMF/master.m3u8",
+          "versions": [
+            {
+              "eStat": {
+                "ml5": "VOF-STMF"
+              },
+              "label": "Français sous-titres pour sourds et malentendants",
+              "shortLabel": "ST mal"
+            }
+          ]
+        },
+        {
+          "protocol": "HTTPS",
+          "url": "https://arteptweb-a.akamaihd.net/am/ptweb/088000/088300/088376-000-A_SQ_0_VOF-STMF_04785373_MP4-2200_AMM-PTWEB_1.mp4",
+          "versions": [
+            {
+              "eStat": {
+                "ml5": "VOF-STMF"
+              },
+              "label": "Français sous-titres pour sourds et malentendants",
+              "shortLabel": "ST mal"
+            }
+          ]
+        },
+        {
+          "protocol": "HTTPS",
+          "url": "https://arteptweb-a.akamaihd.net/am/ptweb/088000/088300/088376-000-A_EQ_0_VOA-STA_04785372_MP4-1500_AMM-PTWEB_2.mp4",
+          "versions": [
+            {
+              "eStat": {
+                "ml5": "VOA-STA"
+              },
+              "label": "Allemand",
+              "shortLabel": "DE"
+            }
+          ]
+        },
+        {
+          "protocol": "HTTPS",
+          "url": "https://arteptweb-a.akamaihd.net/am/ptweb/088000/088300/088376-000-A_SQ_0_VOA-STA_04785373_MP4-2200_AMM-PTWEB_3.mp4",
+          "versions": [
+            {
+              "eStat": {
+                "ml5": "VOA-STA"
+              },
+              "label": "Allemand",
+              "shortLabel": "DE"
+            }
+          ]
+        },
+        {
+          "protocol": "HTTPS",
+          "url": "https://arteptweb-a.akamaihd.net/am/ptweb/088000/088300/088376-000-A_SQ_0_VOA-STMA_04785374_MP4-2200_AMM-PTWEB_4.mp4",
+          "versions": [
+            {
+              "eStat": {
+                "ml5": "VOA-STMA"
+              },
+              "label": "Allemand (malentendants)",
+              "shortLabel": "UT"
+            }
+          ]
+        },
+        {
+          "protocol": "HTTPS",
+          "url": "https://arteptweb-a.akamaihd.net/am/ptweb/088000/088300/088376-000-A_SQ_0_VA_04785375_MP4-2200_AMM-PTWEB_5.mp4",
+          "versions": [
+            {
+              "eStat": {
+                "ml5": "VA"
+              },
+              "label": "Allemand",
+              "shortLabel": "DE"
+            }
+          ]
+        },
+        {
+          "protocol": "HTTPS",
+          "url": "https://arteptweb-a.akamaihd.net/am/ptweb/088000/088300/088376-000-A_SQ_0_VOF_04785376_MP4-2200_AMM-PTWEB_6.mp4",
+          "versions": [
+            {
+              "eStat": {
+                "ml5": "VOF"
+              },
+              "label": "Français",
+              "shortLabel": "VF"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

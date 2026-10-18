@@ -12,34 +12,36 @@ use TheiNaD\DSMediatheken\Utils\Result;
  */
 class Arte extends Mediathek
 {
-    public const STATIC_APIPLAYER_JSON_URL = 'https://static-cdn.arte.tv/static/artevp/5.2.2/config/json/' .
-        'general.json';
-    protected const API_URL_PATTERN = 'https://api.arte.tv/api/player/v1/config/%s/%s';
+    public const API_URL_PATTERN = 'https://api.arte.tv/api/player/v2/config/%s/%s';
+    protected const PROTOCOL_PROGRESSIVE = 'HTTPS';
+    protected const PROTOCOL_HLS = 'HLS';
 
+    /**
+     * Maps the language of the url to the language code used in the version codes of the streams.
+     *
+     * @var array
+     */
     protected static $LANGUAGE_MAP = [
-        'de' => 'de',
-        'fr' => 'fr',
+        'de' => 'A',
+        'fr' => 'F',
+        'en' => 'E[ANG]',
+        'es' => 'E[ESP]',
+        'it' => 'E[ITA]',
+        'pl' => 'E[POL]',
     ];
-    protected static $LANGUAGE_MAP_SHORT_LIBELLE = [
-        'de' => 'de',
-        'fr' => ['vf', 'vof'],
-    ];
-    protected static $OV_SHORT_LIBELLE = [
-        'og',
-        'ov',
-        'omu',
-        'vostf',
-        'vo',
-    ];
+    protected static $DEFAULT_LANGUAGE = 'de';
 
+    /**
+     * Structure of the version code of a stream, e.g. "VOF-STMF":
+     * V (original voice) (voice language) (audio description) -ST (hearing impaired) (subtitle language)
+     *
+     * @var string
+     */
+    protected static $VERSION_CODE_PATTERN = '#^V(?P<ov>O?)(?P<voice>[FA]|E\[[A-Z]+\]|EU)?(?P<ad>AUD|)' .
+        '(?:(?P<sub>-ST)(?P<sdh>M?)(?P<sublang>[FA]|E\[[A-Z]+\]|EU))?#';
+    protected static $VIDEO_URL_PATTERN = '#arte\.tv/(?:guide/)?(?:(?P<lang>[a-z]{2})/)?(?:videos/)?' .
+        '(?P<id>\d{6}-\d{3}-[AF])(?:[/?\\#]|$)#i';
     protected static $SUPPORT_MATCHER = 'arte.tv';
-
-    protected $language = 'de';
-    protected $languageShortLibelle = 'de';
-
-    protected $platform;
-    protected $detectedLanguage;
-    protected $subdomain;
 
     /**
      * @param string $url
@@ -50,51 +52,42 @@ class Arte extends Mediathek
      */
     public function getDownloadInfo($url, $username = '', $password = '')
     {
-        $this->getLogger()->log('determining website and language by url ' . $url);
-        if ($this->extractLanguageAndPlatformFromUrl($url) === false) {
-            return null;
-        }
-
-        $this->changeLanguageIfDetected();
-
-        $this->getLogger()->log(
-            sprintf(
-                'using language %s (%s)',
-                $this->language,
-                print_r($this->languageShortLibelle, true)
-            )
-        );
-
-        $this->getLogger()->log('fetching page content.');
-
-        $videoPage = $this->getTools()->curlRequest($url);
-        if ($videoPage === null) {
-            return null;
-        }
-
-        $token = $this->getApiToken();
-        if (empty($token)) {
-            $this->getLogger()->log('Could not retrieve token');
+        $ids = $this->extractLanguageAndVideoId($url);
+        if ($ids === null) {
+            $this->getLogger()->log('could not find a video id in ' . $url);
 
             return null;
         }
 
-        $json = $this->processVideoPage($videoPage, $token);
-        if ($json === null) {
+        list($language, $videoId) = $ids;
+        $this->getLogger()->log(sprintf('using language %s and video id %s', $language, $videoId));
+
+        $config = $this->getPlayerConfig($language, $videoId);
+        if ($config === null) {
             return null;
         }
 
-        $result = $this->getBestSource($json);
-        if (!$result->hasUri()) {
-            $result = $this->getBestSource($json, true);
+        $attributes = $config['data']['attributes'] ?? [];
+
+        if (!empty($attributes['restriction']['geoblocking']['restrictedArea'])) {
+            $this->getLogger()->log(
+                'the video is restricted to ' . ($attributes['restriction']['geoblocking']['code'] ?? 'some countries')
+            );
         }
 
-        if (!$result->hasUri()) {
+        if (empty($attributes['rights'])) {
+            $this->getLogger()->log('the video is not available in this language or the broadcast rights expired');
+
             return null;
         }
 
-        $result = $this->addTitle($result, $json);
+        $result = $this->getBestSource($attributes['streams'] ?? [], $language);
+        if ($result === null) {
+            return null;
+        }
+
         $result->setUri($this->getTools()->addProtocolFromUrlIfMissing($result->getUri(), $url));
+        $this->addTitle($result, $attributes['metadata'] ?? []);
 
         return $result;
     }
@@ -102,176 +95,164 @@ class Arte extends Mediathek
     /**
      * @param string $url
      *
-     * @return bool
+     * @return array|null language and video id
      */
-    protected function extractLanguageAndPlatformFromUrl($url)
+    protected function extractLanguageAndVideoId($url)
     {
-        if (preg_match('#https?://(\w+\.)?arte.tv/(?:guide/)?([a-zA-Z]+)#si', $url, $match) > 0) {
-            $this->platform = 'arte';
-            $this->subdomain = $match[1];
-            $this->detectedLanguage = isset($match[2]) ? $match[2] : null;
-
-            return true;
-        }
-
-        $this->getLogger()->log('not a known arte website');
-
-        return false;
-    }
-
-    /**
-     * @return void
-     */
-    protected function changeLanguageIfDetected()
-    {
-        if ($this->languageExists($this->detectedLanguage)) {
-            $this->language = self::$LANGUAGE_MAP[$this->detectedLanguage];
-            $this->languageShortLibelle = self::$LANGUAGE_MAP_SHORT_LIBELLE[$this->detectedLanguage];
-        }
-    }
-
-    /**
-     * @param string $videoPage
-     * @param string $token
-     *
-     * @return object|null
-     */
-    protected function processVideoPage($videoPage, $token)
-    {
-        $videoId = $this->getTools()->pregMatchDefault('#arte://program/(.*?)\?source=web#si', $videoPage);
-        if ($videoId === null) {
-            $this->getLogger()->log('Could not identify video id');
+        if (preg_match(static::$VIDEO_URL_PATTERN, $url, $match) !== 1) {
             return null;
         }
 
-        $playerUrl = sprintf(static::API_URL_PATTERN, $this->language, $videoId);
+        $language = strtolower($match['lang']);
+
+        return [
+            isset(static::$LANGUAGE_MAP[$language]) ? $language : static::$DEFAULT_LANGUAGE,
+            strtoupper($match['id']),
+        ];
+    }
+
+    /**
+     * @param string $language
+     * @param string $videoId
+     *
+     * @return array|null
+     */
+    protected function getPlayerConfig($language, $videoId)
+    {
+        $playerUrl = sprintf(static::API_URL_PATTERN, $language, $videoId);
         $this->getLogger()->log('the player is located at ' . $playerUrl);
 
-        $json = $this->getTools()->curlRequest($playerUrl, [
+        $response = $this->getTools()->curlRequest($playerUrl, [
             CURLOPT_HTTPHEADER => [
-                'Authorization: Bearer ' . $token,
+                'x-validated-age: 18',
             ],
         ]);
-
-        if ($json === null) {
+        if ($response === null) {
             return null;
         }
 
-        return json_decode($json, false);
+        $config = json_decode($response, true);
+
+        return is_array($config) ? $config : null;
     }
 
     /**
-     * @param object $json
-     * @param bool   $ov
+     * Picks the progressive file with the best matching language. Streams of other protocols (HLS) can not be
+     * downloaded by Download Station.
      *
-     * @return Result
+     * @param array  $streams
+     * @param string $language
+     *
+     * @return Result|null
      */
-    protected function getBestSource($json, $ov = false)
+    protected function getBestSource(array $streams, $language)
     {
-        $result = new Result();
+        $best = null;
+        $hasHls = false;
 
-        foreach ($json->videoJsonPlayer->VSR as $source) {
+        foreach ($streams as $stream) {
+            $protocol = $stream['protocol'] ?? '';
+            $version = $stream['versions'][0] ?? [];
+            $versionCode = $version['eStat']['ml5'] ?? '';
+
+            $this->getLogger()->log(sprintf(
+                'found %s stream "%s" (%s): %s',
+                $protocol,
+                $versionCode,
+                $version['label'] ?? 'unknown',
+                $stream['url'] ?? ''
+            ));
+
+            if ($protocol === self::PROTOCOL_HLS) {
+                $hasHls = true;
+            }
+
+            if ($protocol !== self::PROTOCOL_PROGRESSIVE || empty($stream['url'])) {
+                continue;
+            }
+
+            $score = [
+                $this->getLanguageScore($versionCode, static::$LANGUAGE_MAP[$language]),
+                $this->getBitrate($stream),
+            ];
+            if ($best === null || $score > $best['score']) {
+                $best = ['score' => $score, 'url' => $stream['url'], 'bitrate' => $score[1]];
+            }
+        }
+
+        if ($best === null) {
             $this->getLogger()->log(
-                sprintf(
-                    'found quality of %d with language %s (%s)',
-                    $source->bitrate,
-                    $source->versionLibelle,
-                    $source->versionShortLibelle
-                )
+                $hasHls
+                    ? 'the video is only available as HLS stream, which can not be downloaded by Download Station'
+                    : 'no progressive stream found'
             );
 
-            if ($source->mediaType !== 'mp4') {
-                continue;
-            }
-
-            if ($source->bitrate <= $result->getBitrateRating()) {
-                continue;
-            }
-
-            $shortLibelleLowercase = mb_strtolower($source->versionShortLibelle);
-
-            if ($ov) {
-                if (!$this->shortLibelleIsOv($shortLibelleLowercase)) {
-                    continue;
-                }
-            } else {
-                if (!$this->shortLibelleMatches($shortLibelleLowercase)) {
-                    continue;
-                }
-            }
-
-            $result = new Result();
-
-            $result->setBitrateRating($source->bitrate);
-            $result->setUri($source->url);
+            return null;
         }
+
+        $result = new Result();
+        $result->setUri($best['url']);
+        $result->setBitrateRating($best['bitrate']);
 
         return $result;
     }
 
     /**
-     * @param string|array $shortLibelle
+     * Prefers (in this order) voice in the requested language, no audio description, no subtitles, the original voice,
+     * subtitles in the requested language, no subtitles for the hearing impaired.
      *
-     * @return bool
+     * Subtitles may be part of the picture, so a version without them is preferred to one with them.
+     *
+     * @param string $versionCode
+     * @param string $languageCode
+     *
+     * @return int
      */
-    protected function shortLibelleMatches($shortLibelle)
+    protected function getLanguageScore($versionCode, $languageCode)
     {
-        if (!is_array($this->languageShortLibelle)) {
-            return $shortLibelle === $this->languageShortLibelle;
+        if (preg_match(static::$VERSION_CODE_PATTERN, $versionCode, $match) !== 1) {
+            return -1;
         }
 
-        return in_array($shortLibelle, $this->languageShortLibelle, true);
+        $flags = [
+            ($match['voice'] ?? '') === $languageCode,
+            $match['ad'] === '',
+            ($match['sub'] ?? '') === '',
+            $match['ov'] !== '',
+            ($match['sublang'] ?? '') === $languageCode,
+            ($match['sdh'] ?? '') === '',
+        ];
+
+        $score = 0;
+        foreach ($flags as $flag) {
+            $score = $score * 2 + ($flag ? 1 : 0);
+        }
+
+        return $score;
     }
 
     /**
-     * @param string $shortLibelle
+     * @param array $stream
      *
-     * @return bool
+     * @return int
      */
-    protected function shortLibelleIsOv($shortLibelle)
+    protected function getBitrate(array $stream)
     {
-        return in_array($shortLibelle, self::$OV_SHORT_LIBELLE, true);
+        $bitrate = $this->getTools()->pregMatchDefault('#MP4-(\d+)_#', $stream['url'], 0);
+
+        return (int)$bitrate;
     }
 
     /**
      * @param Result $result
-     * @param object $json
+     * @param array  $metadata
      *
-     * @return Result
+     * @return void
      */
-    protected function addTitle($result, $json)
+    protected function addTitle(Result $result, array $metadata)
     {
-        $result->setTitle(trim($json->videoJsonPlayer->VTI));
-        $result->setEpisodeTitle(isset($json->videoJsonPlayer->VSU) ? trim($json->videoJsonPlayer->VSU) : '');
-
-        return $result;
-    }
-
-    /**
-     * @param string|null $detectedLanguage
-     *
-     * @return bool
-     */
-    protected function languageExists($detectedLanguage)
-    {
-        if ($detectedLanguage === null) {
-            return false;
-        }
-
-        return isset(
-            self::$LANGUAGE_MAP[$detectedLanguage],
-            self::$LANGUAGE_MAP_SHORT_LIBELLE[$detectedLanguage]
-        );
-    }
-
-    /**
-     * @return string
-     */
-    protected function getApiToken()
-    {
-        $response = $this->getTools()->curlRequest(self::STATIC_APIPLAYER_JSON_URL);
-        $data = json_decode($response, false);
-
-        return $data->apiplayer->token;
+        // the subtitle is the title of the episode
+        $result->setTitle(trim($metadata['title'] ?? ''));
+        $result->setEpisodeTitle(trim($metadata['subtitle'] ?? ''));
     }
 }
