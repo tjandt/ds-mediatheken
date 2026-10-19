@@ -94,7 +94,7 @@ This link just has to be added in the `Download Station` and after a short perio
 
 - **Important** Currently the highest MP4 quality available will be downloaded.
 - It may happen that a download doesn't work as expected and no video file is downloaded. If this is the case, please [create an Issue](https://github.com/iNaD/ds-mediatheken/issues/new) with the link to the episode and some information about your Diskstation.
-- Download Station can only download single files, not HLS/DASH streams. If Arte offers a video as HLS stream only, it can not be downloaded. In this case the download fails and the log tells the reason.
+- Download Station can only download single files, not HLS/DASH streams. **Arte** currently delivers videos as HLS stream with separate video, audio and subtitle tracks. Download Station can not download this, the download fails and the log tells the reason. For Arte you can use e.g. [yt-dlp](https://github.com/yt-dlp/yt-dlp) with `ffmpeg`.
 - Links to single videos are supported, not the pages of shows, series or collections.
 - 3sat has not been migrated to the new API of ZDF yet.
 
