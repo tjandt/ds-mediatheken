@@ -20,7 +20,7 @@
       },
       "streams": [
         {
-          "protocol": "HLS",
+          "protocol": "API_HLS_NG_MA",
           "url": "https://manifest-arte.akamaized.net/hls/088376-000-A_VOF-STMF/master.m3u8",
           "versions": [
             {

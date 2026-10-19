@@ -14,7 +14,7 @@ class Arte extends Mediathek
 {
     public const API_URL_PATTERN = 'https://api.arte.tv/api/player/v2/config/%s/%s';
     protected const PROTOCOL_PROGRESSIVE = 'HTTPS';
-    protected const PROTOCOL_HLS = 'HLS';
+    protected const PROTOCOL_HLS_MARKER = 'HLS';
 
     /**
      * Maps the language of the url to the language code used in the version codes of the streams.
@@ -163,7 +163,8 @@ class Arte extends Mediathek
                 $stream['url'] ?? ''
             ));
 
-            if ($protocol === self::PROTOCOL_HLS) {
+            // the protocol is e.g. "HLS" or "API_HLS_NG_MA"
+            if (stripos($protocol, self::PROTOCOL_HLS_MARKER) !== false) {
                 $hasHls = true;
             }
 

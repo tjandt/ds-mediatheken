@@ -101,11 +101,22 @@ final class ArteTest extends TestCase
 
     public function testNothingIsReturnedIfOnlyHlsIsAvailable(): void
     {
+        $messages = [];
+        $logger = $this->createMock(Logger::class);
+        $logger->method('log')->willReturnCallback(function ($message) use (&$messages) {
+            $messages[] = $message;
+        });
+
         $this->assertNull($this->getDownloadInfo(
             'https://www.arte.tv/de/videos/088376-000-A/lou-andreas-salome/',
             'de',
-            'arte/apiResponseHlsOnly.json'
+            'arte/apiResponseHlsOnly.json',
+            $logger
         ));
+        $this->assertContains(
+            'the video is only available as HLS stream, which can not be downloaded by Download Station',
+            $messages
+        );
     }
 
     public function testNothingIsReturnedIfBroadcastRightsExpired(): void
@@ -132,12 +143,13 @@ final class ArteTest extends TestCase
      * @param string $downloadUrl
      * @param string $apiLanguage
      * @param string $fixture name of a fixture or the json itself
+     * @param Logger $logger
      *
      * @return Result|null
      */
-    private function getDownloadInfo($downloadUrl, $apiLanguage, $fixture)
+    private function getDownloadInfo($downloadUrl, $apiLanguage, $fixture, Logger $logger = null)
     {
-        $logger = $this->createMock(Logger::class);
+        $logger = $logger ?? $this->createMock(Logger::class);
         $curl = $this->createMock(Curl::class);
         $tools = new Tools($logger, $curl);
 
